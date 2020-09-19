@@ -1,6 +1,8 @@
 # shapi
+daemon
+logs
 secrets
-bin\shapid
+bin/shapid
 
 # Binaries for programs and plugins
 *.exe

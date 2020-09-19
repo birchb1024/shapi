@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# Script to start/stop shapi daemon
+#
+# USAGE
+#
+# $ shapid start|stop
+#
+set -euo pipefail
+
+function fail {
+    msg="shapid - $1"
+    echo "$msg" >&2
+    logger "$msg"
+    exit 1
+}
+
+function stop {
+    if [ -e "$SHAPI_HOME"/daemon/shapid.pid ]
+    then
+        kill $(cat "$SHAPI_HOME"/daemon/shapid.pid ) || true
+        logger "shapid - Stopped"
+    fi
+}
+
+DEBUG=${DEBUG:-0}
+: "${1}"
+
+
+if [ "$DEBUG" != "0" ]
+then
+    set -x
+fi
+
+# Check dependencies
+for C in /usr/sbin/sshd envsubst ssh-keygen
+do
+    command -V $C >/dev/null
+done
+
+script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+export script_dir
+
+SHAPI_HOME=$(readlink -f "${SHAPI_HOME:-$script_dir/..}" )
+export SHAPI_HOME
+if [[ "$SHAPI_HOME" = "" ]]
+then
+	echo "SHAPI_HOME unreadable!"
+	exit 1
+fi
+
+# Make directories if needed
+for D in daemon logs
+do
+    mkdir -p "$SHAPI_HOME/$D"
+    chmod u=rwx,g=,o= "$SHAPI_HOME/$D"
+done
+
+# Generate the sshd config file
+envsubst '$SHAPI_HOME' < "$SHAPI_HOME"/src/shapid_config.template > "$SHAPI_HOME"/daemon/shapid_config
+chmod u=rwx,g=,o= "$SHAPI_HOME"/daemon/shapid_config
+
+if [[ "${1}" == "start" ]]
+then
+    if [ -e "$SHAPI_HOME"/daemon/shapid.pid ]
+    then
+        fail "ERROR: daemon already running: $(cat "$SHAPI_HOME"/daemon/shapid.pid)"
+    fi
+
+    # generate the host key if it doesn't exist
+    if [[ ! -e "${SHAPI_HOME}"/daemon/shapid_host_rsa_key ]]
+    then
+        ssh-keygen -f "${SHAPI_HOME}"/daemon/shapid_host_rsa_key -N '' -t rsa
+    fi
+
+    # copy the binary for sshd if it's newer
+    if [[ /usr/sbin/sshd -nt "$SHAPI_HOME"/bin/shapid ]]
+    then
+        cp -p /usr/sbin/sshd "$SHAPI_HOME"/bin/shapid
+    fi
+
+    # Start the sshd daemon
+    if [ "$DEBUG" != "0" ]
+    then
+        nohup "$SHAPI_HOME"/bin/shapid -E "$SHAPI_HOME"/logs/shapid.log -f "$SHAPI_HOME"/daemon/shapid_config >> logs/nohup.log &
+    else
+        nohup "$SHAPI_HOME"/bin/shapid -f "$SHAPI_HOME"/daemon/shapid_config >> logs/nohup.log &
+    fi
+
+    # Copy own key for testing
+    if ( grep -s -q -f ~/.ssh/id_rsa.pub "$SHAPI_HOME"/daemon/authorized_keys )
+    then
+        : "all good"
+    else
+        cat ~/.ssh/id_rsa.pub >> "$SHAPI_HOME"/daemon/authorized_keys
+    fi
+
+    # Test connection
+    if ( ssh  -o PreferredAuthentications=publickey -T -x -p 8080 localhost shapi/health | grep -s -q OK )
+    then
+        : "all good"
+    else
+        fail "ERROR - self-test failed"
+        stop
+    fi
+
+
+    logger "shapid - Started"
+    echo
+    exit 0
+fi
+
+# Stop the daemon
+stop
+
+

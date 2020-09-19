@@ -1,0 +1,7 @@
+{
+  "commands": {
+    "shapi/health": "When running, repond with '{\"health\": \"OK\"}'",
+    "shapi/help": "Print Help text",
+    "shapi/echo": "Echo the received JSON. Fail if JSON is invalid"
+  }
+}

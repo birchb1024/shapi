@@ -4,21 +4,25 @@
 #
 set -euo pipefail
 #set -x
+
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-
-PASSWORD_STORE_GPG_PASSPHRASE_FILE=${PASSWORD_STORE_GPG_PASSPHRASE_FILE:-$(readlink -f "${script_dir}"/../../secret/gpg-pass-phrase.txt)}
-export PASSWORD_STORE_GPG_OPTS="--passphrase-file $PASSWORD_STORE_GPG_PASSPHRASE_FILE"
-export PASSWORD_STORE_DIR=${PASSWORD_STORE_DIR:-$(readlink -f "${script_dir}"/../../.password-store)}
-PASS_BIN_DIR=$(readlink -f "${script_dir}"/../bin)
-export PATH="$PASS_BIN_DIR":$PATH
-
 test -d "$script_dir"
-test -x "$PASS_BIN_DIR"/pass
-test -e "$PASSWORD_STORE_GPG_PASSPHRASE_FILE"
-test -d "$PASSWORD_STORE_DIR"
+
+if false
+then
+  # TODO Move into a command which uses pass
+  PASSWORD_STORE_GPG_PASSPHRASE_FILE=${PASSWORD_STORE_GPG_PASSPHRASE_FILE:-$(readlink -f "${script_dir}"/secret/gpg-pass-phrase.txt)}
+  export PASSWORD_STORE_GPG_OPTS="--passphrase-file $PASSWORD_STORE_GPG_PASSPHRASE_FILE"
+  export PASSWORD_STORE_DIR=${PASSWORD_STORE_DIR:-$(readlink -f "${script_dir}"/../../.password-store)}
+  PASS_BIN_DIR=$(readlink -f "${script_dir}"/../bin)
+  export PATH="$PASS_BIN_DIR":$PATH
+  test -x "$PASS_BIN_DIR"/pass
+  test -e "$PASSWORD_STORE_GPG_PASSPHRASE_FILE"
+  test -d "$PASSWORD_STORE_DIR"
+fi
 
 function help {
-  cat "$script_dir"/shapi-help.yaml
+  "$script_dir"/../bin/jp -f "$script_dir"/shapi-help.json '@' 
 }
 
 if [[ $# -lt 1 ]]
@@ -37,21 +41,25 @@ command="${varargs[0]}"
 # We test commands explicitly to avoid injections 
 case "$command" in
 
-  help)
+  shapi/help)
     help
     exit 0  
   ;;
 
-  computer/groups)
-    "$script_dir"/../../active_directory/computer.sh groups ${varargs[@]:1}
+  shapi/health)
+    echo '{"health": "OK"}'
     ;;
 
-  ldap/object)
-    "$(readlink -f "$script_dir"/../../active_directory/object.sh)" ${varargs[@]:1}
+  shapi/echo)
+    "$script_dir"/../bin/jp '@'
+    ;;
+
+  machine/facter)
+    facter -j | awk '!/ssh/' | "$script_dir"/../bin/jp '@'
     ;;
 
     * )
-      echo "Unknown command: $command"  1>&2
+      echo '{ "error": "Unknown command '$command'" }'
     ;;
 esac
 
