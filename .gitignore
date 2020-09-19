@@ -1,3 +1,7 @@
+# shapi
+secrets
+bin\shapid
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
