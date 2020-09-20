@@ -1,7 +1,12 @@
 # shapi
 Use ssh as transport for JSON-based APIs. (almost REST over ssh)
 
+# Version
+
+Proptyope Edition 0.1.0
+
 # Introduction
+
 In many Linux and Unix sites, [ssh](https://www.openssh.com/) is on all machines and is very trusted. `ssh` is trusted becuase it uses PKI for authentication and strong ciphers for on-the-wire encryption. Every machine runs the `ssh` server/daemon `sshd` and users and automation tools such as [Ansible](https://www.ansible.com/) securely connect from machine to machine to automate many privileged administration tasks. `ssh` is the workhorse of DevOps. Some shops also use ssh-based `scp/sftp` to transfer data files around the organisation. 
 
 Architects who need a client-server system to allow machines to access services remotely typically provide a REST service or microservice solution. This is JSON carried on HTTP(S) and usually they will add JWT for authentication. This requires quite some work - installing web servers, authentication solutions, possible load balancers. Even Kubernetes. For solutions which must scale to millions of transactions it makes perfect sense. However for devops tasks which are low volume this is a significant overhead in labor.
@@ -40,6 +45,72 @@ So we have our own ssh daemon. Let's say we have a user called `shapiuser` who h
 
 The ssh daemon can run particular commands instead of starting an interactice shell. This is via the `ForceCommand` directive. So in our example there is a mapping between `user/detail` and a special script or command which executes the service. shapi provides a framework for launching application programs and passing parameters to them. 
 
+## System Requirements
+
+You will need a 64-bit Linux system with a recent version of `sshd` installed. I have used Centos 7 Debian 9 (Stretch) and Debian 10 (Buster).
+
+# Installation
+
+Installation is from the Git repository at the moment. First login to the userid which will run the daemon (for this document I will use `shapiuser`)). Download a copy of the repository into a directory which will become the runtime dirctory for `shapiuser`.
+
+```
+$ git clone git@github.com:birchb1024/shapi.git $HOME
+```
+
+# Running
+
+To start the daemon on the default port (2222) run
+
+```
+$ shapi/src/shapidctl start
+```
+
+To check the server health run
+
+```
+$ ssh -T -p 2222 localhost shapi/health
+```
+
+To get the list of available services run
+
+```
+$ ssh -T -p 2222 localhost shapi/help
+```
+
+## Using shapi remotely
+
+First you must add your ssh public key (usually `~/.ssh/id_rsa.pub` to the shapid's authorized keys list
+`shapi/daemon/authorized_keys`.
+
+Then issue the ssh command from another machine:
+
+```
+$ ssh -T -p 2222 myshapiserver shapi/health
+```
+
+## Adding Services
+
+In the prototype you need to edit the file `src/shapi-launcher.sh` and add commands to the case statement. 
+For example:
+
+```
+  machine/facter)
+    stdoutTmpFile=$(mktemp)
+    stderrTmpFile=$(mktemp)
+    set +e
+    if ( facter -j | awk '!/ssh/' | "$script_dir"/../bin/jp '@' ) 1>"$stdoutTmpFile" 2>"$stderrTmpFile"
+    then
+      cat "$stdoutTmpFile"
+    else
+      echo "{ \"error\": \"$(cat "$stderrTmpFile" | sed 's;";\";g' )\" }"
+      exit 1
+    fi
+    set -e
+    ;;
+```
+
+When the Golang version is available, commands will be added by adding code to a YAML configuration file. Handling errors and stderr capture will be automated in Golang.
+
 # Performance
 
 Setting up an ssh session involves quite a bit. There is negotiation of authentication, ciphers, DNS lookups and so on. This is the cost of good security. Without optimisatio connections can take 200 milliseconds, however there are [ways to improve this](https://www.tecmint.com/speed-up-ssh-connections-in-linux/) to around 25 milliseconds depending on your equipment. 
@@ -51,7 +122,6 @@ The sshd server is very capable of handling hundreds of simultaneous connections
 
 The shapi daemon is openssh daemon with non-root configuration. All processes run in user-space as the shapi user. Linux PAM is disabled since the users are not logging in to the Linux host. shapid enforces ssh key-based login from remote clients. Clients can only access the service if they have a public key uploaded by the administrators.  
 
-Local secrets are stored in the ‘pass’ password store which in turn uses GPG-base encryption and decryption. GPG uses 2048-bit RSA keys and AES256 encrypted data.
 
 # Logging
 
@@ -109,6 +179,7 @@ The initial implementation is programmed in `bash`, this is essentially a protot
   * comprehensive test suite
 * Replace all scripted code with GoLang
     * Validate security of GoLang with code analysis tools
+    * Provide binaries for Linux 32/64 and ARM 6 and ARM 7(Raspberry Pi)
 * Define protocol between shapi and user commands (reminds me of CGI)
   * Provide template sample commands  
 * Implement features:
@@ -124,6 +195,10 @@ The initial implementation is programmed in `bash`, this is essentially a protot
   * Public Key Submission access request command for clients. Like [dokku](https://github.com/dokku/sshcommand#commands) provides.
   * Access request CRUD commands for Admin
   * Packaging and Installer
+
+# Help Wanted
+
+Please contact me via GitHub if you would like to contribute to this excellent project. 
 
 # Notes
 ## Alternative ssh daemons to openssh 
