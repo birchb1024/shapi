@@ -55,7 +55,17 @@ case "$command" in
     ;;
 
   machine/facter)
-    facter -j | awk '!/ssh/' | "$script_dir"/../bin/jp '@'
+	    stdoutTmpFile=$(mktemp)
+     	    stderrTmpFile=$(mktemp)
+            set +e
+	    if ( facter -j | awk '!/ssh/' | "$script_dir"/../bin/jp '@' ) 1>"$stdoutTmpFile" 2>"$stderrTmpFile"
+	    then
+		cat "$stdoutTmpFile"
+	    else
+		echo "{ \"error\": \"$(cat "$stderrTmpFile" | sed 's;";\";g' )\" }"
+		exit 1
+	    fi
+	    set -e
     ;;
 
     * )

@@ -1,5 +1,5 @@
 #
-Port 8080
+Port $PORT
 #AddressFamily any
 #ListenAddress 0.0.0.0
 #ListenAddress ::

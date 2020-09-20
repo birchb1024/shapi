@@ -23,9 +23,10 @@ function stop {
     fi
 }
 
+SHAPIHOST=${SHAPIHOST:-127.0.0.1}
+PORT=${PORT:-2222}
 DEBUG=${DEBUG:-0}
 : "${1}"
-
 
 if [ "$DEBUG" != "0" ]
 then
@@ -33,7 +34,7 @@ then
 fi
 
 # Check dependencies
-for C in /usr/sbin/sshd envsubst ssh-keygen
+for C in /usr/sbin/sshd envsubst ssh-keygen netcat
 do
     command -V $C >/dev/null
 done
@@ -57,8 +58,10 @@ do
 done
 
 # Generate the sshd config file
-envsubst '$SHAPI_HOME' < "$SHAPI_HOME"/src/shapid_config.template > "$SHAPI_HOME"/daemon/shapid_config
-chmod u=rwx,g=,o= "$SHAPI_HOME"/daemon/shapid_config
+export PORT
+export SHAPI_HOME
+envsubst '$SHAPI_HOME $PORT' < "$SHAPI_HOME"/src/shapid_config.template > "$SHAPI_HOME"/daemon/shapid_config
+chmod u=rw,g=,o= "$SHAPI_HOME"/daemon/shapid_config
 
 if [[ "${1}" == "start" ]]
 then
@@ -90,15 +93,27 @@ then
     # Copy own key for testing
     if ( grep -s -q -f ~/.ssh/id_rsa.pub "$SHAPI_HOME"/daemon/authorized_keys )
     then
-        : "all good"
+        : "key already there"
     else
         cat ~/.ssh/id_rsa.pub >> "$SHAPI_HOME"/daemon/authorized_keys
     fi
 
+    # Wait for port to open
+    countdown="...."
+    until ( netcat -w 30 -z "$SHAPIHOST" "$PORT" )
+    do
+	countdown=${countdown#"."} # remove first '.'
+	if [ -z "$countdown" ]
+	then
+            fail "ERROR - port $PORT nor opened"
+	fi
+	sleep 1
+    done
+     
     # Test connection
-    if ( ssh  -o PreferredAuthentications=publickey -T -x -p 8080 localhost shapi/health | grep -s -q OK )
+    if ( ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey -T -x -p "$PORT" "$SHAPIHOST" shapi/health | grep -s -q OK )
     then
-        : "all good"
+        : "health good"
     else
         fail "ERROR - self-test failed"
         stop
